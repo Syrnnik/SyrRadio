@@ -75,6 +75,43 @@ bridge/deploy.sh
 Контейнер `mc-server-syrradio-bridge-1`, проект `mc-server`, сеть
 `mc-server_default`. Сервер майнкрафта ходит к нему по `http://syrradio-bridge:8080`.
 
+### Особенности servnnik
+
+Эти настройки нужны только на servnnik, поэтому в `.env.example` их нет —
+они живут в `~/minecraft/syrradio-bridge/.env` на сервере.
+
+- `REGISTRY=mirror.gcr.io` — Docker Hub с servnnik не открывается, базовые
+  образы тянем с зеркала Google.
+- `PROXY_YOUTUBE=http://10.200.200.2:8888` и `PROXY_OTHER=http://10.200.200.2:8888` —
+  YouTube и SoundCloud с домашнего IP заблокированы, качаем их через VPN.
+  Яндекс прокси не трогает: ему нужен как раз российский IP.
+
+VPN на servnnik — туннель AmneziaWG до `vpn.redbread.tech` внутри network
+namespace `vpnns` и tinyproxy в нём на `10.200.200.2:8888`. Контейнеры ходят
+к прокси через veth `10.200.200.1 ↔ 10.200.200.2` и NAT для `172.16.0.0/12`.
+Поднимают его юниты `vpnns.service` (скрипт `/usr/local/sbin/vpnns-up`) и
+`vpn-proxy.service`, исходники — `~/vpn-proxy-setup/`, конфиг туннеля —
+`~/vpn/awg0.conf`. Тот же прокси раньше стоял у майнкрафт-серверов
+(закомментированный блок в `compression-1-20-1/docker-compose.yml`).
+
+Проверка с сервера:
+
+```bash
+docker run --rm --network mc-server_default curlimages/curl \
+  -s -m 10 -x http://10.200.200.2:8888 https://api.ipify.org
+```
+
+Должен вернуться IP VPN, а не домашний. Если таймаут — туннель лежит:
+
+```bash
+sudo awg show                 # в vpnns: sudo ip netns exec vpnns awg show
+sudo systemctl restart vpnns.service vpn-proxy.service
+```
+
+`latest handshake` давнее пары минут или пустое — сервер не отвечает:
+проверить, жив ли AmneziaWG на `vpn.redbread.tech` и не сменились ли ключ
+или порт в `~/vpn/awg0.conf`.
+
 ### Токен Яндекс Музыки
 
 Нужен аккаунт с Плюсом. Получить токен:
