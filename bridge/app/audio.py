@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import subprocess
 from pathlib import Path
@@ -23,7 +24,7 @@ def to_ogg(src: Path, dest: Path) -> int:
         "-vn", "-map_metadata", "-1",
         "-ac", "2", "-ar", "48000",
         "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
-        "-c:a", "libvorbis", "-q:a", config.OGG_QUALITY,
+        *_encoder_args(),
         str(tmp),
     ]
     try:
@@ -35,6 +36,16 @@ def to_ogg(src: Path, dest: Path) -> int:
         raise SourceError("ffmpeg перекодировал трек слишком долго") from e
     tmp.replace(dest)
     return probe_duration_ms(dest)
+
+
+@functools.cache
+def _encoder_args() -> tuple[str, ...]:
+    """libvorbis, если ffmpeg собран с ним (в образе — да). Иначе встроенный
+    экспериментальный кодер: хуже звучит, но годится для проверки на маке."""
+    encoders = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True).stdout
+    if "libvorbis" in encoders:
+        return ("-c:a", "libvorbis", "-q:a", config.OGG_QUALITY)
+    return ("-c:a", "vorbis", "-strict", "-2", "-b:a", "128k")
 
 
 def probe_duration_ms(path: Path) -> int:

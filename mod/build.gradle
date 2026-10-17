@@ -27,8 +27,15 @@ minecraft {
                 }
             }
         }
-        client {}
+        client {
+            // ./gradlew runClient -PjoinLocal — сразу зайти на локальный runServer.
+            if (project.hasProperty('joinLocal')) {
+                args '--quickPlayMultiplayer', 'localhost:25565', '--username', 'Dev'
+            }
+        }
         server {
+            // Отдельная папка: клиент и сервер не делят конфиги и логи.
+            workingDirectory project.file('run-server')
             args '--nogui'
         }
     }
