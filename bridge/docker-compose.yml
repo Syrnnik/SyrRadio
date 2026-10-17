@@ -1,0 +1,19 @@
+# Загрузчик треков для мода SyrRadio. Живёт в проекте mc-server, поэтому сидит
+# в той же сети mc-server_default, что и серверы майнкрафта: они ходят к нему
+# по имени http://syrradio-bridge:8080. Наружу порт не открыт.
+services:
+  syrradio-bridge:
+    build:
+      context: .
+      args:
+        REGISTRY: ${REGISTRY:-docker.io}
+    image: syrradio-bridge:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Готовые ogg на час, пока трек в очереди. Медиатеку не копим.
+      - syrradio-cache:/cache
+
+volumes:
+  syrradio-cache:

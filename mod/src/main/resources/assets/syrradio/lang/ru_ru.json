@@ -1,0 +1,44 @@
+{
+  "key.categories.syrradio": "SyrRadio",
+  "key.syrradio.open": "Открыть радио",
+
+  "syrradio.screen.title": "SyrRadio",
+  "syrradio.screen.url_hint": "Ссылка на трек: Яндекс Музыка, YouTube, SoundCloud…",
+  "syrradio.screen.add": "Добавить",
+  "syrradio.screen.skip": "Пропустить",
+  "syrradio.screen.radio_on": "Радио: вкл",
+  "syrradio.screen.radio_off": "Радио: выкл",
+  "syrradio.screen.volume": "Громкость: %s%%",
+  "syrradio.screen.nothing": "Ничего не играет. Вставь ссылку на трек ниже.",
+  "syrradio.screen.requested_by": "добавил %s · %s",
+  "syrradio.screen.preparing": "Скачиваю трек…",
+  "syrradio.screen.loading": "Получаю трек… %s%%",
+  "syrradio.screen.starting": "Сейчас начнётся…",
+  "syrradio.screen.off_hint": "У тебя радио выключено. Остальные его слышат.",
+  "syrradio.screen.queue": "Дальше (%s)",
+  "syrradio.screen.queue_empty": "Очередь пуста",
+  "syrradio.screen.queue_more": "…и ещё %s",
+  "syrradio.screen.no_server": "На этом сервере нет SyrRadio.",
+  "syrradio.screen.version_mismatch": "Версия SyrRadio не совпадает с серверной (протокол %s, у сервера %s). Обнови мод.",
+
+  "syrradio.source.yandex": "Яндекс Музыка",
+  "syrradio.source.youtube": "YouTube",
+  "syrradio.source.soundcloud": "SoundCloud",
+  "syrradio.source.other": "ссылка",
+
+  "syrradio.notice.not_url": "Нужна ссылка на трек (https://...)",
+  "syrradio.notice.resolving": "Ищу трек…",
+  "syrradio.notice.added": "Добавлено: %s",
+  "syrradio.notice.failed": "Не получилось добавить: %s",
+  "syrradio.notice.track_failed": "Не удалось загрузить «%s»: %s",
+
+  "syrradio.command.skipped": "Пропущено",
+  "syrradio.command.nothing": "Ничего не играет",
+  "syrradio.command.stopped": "Радио остановлено, очередь очищена",
+
+  "syrradio.error.bridge_down": "Загрузчик треков недоступен",
+  "syrradio.error.bridge_timeout": "Загрузчик треков не ответил вовремя",
+  "syrradio.error.bridge_http": "Загрузчик треков ответил HTTP %s",
+  "syrradio.error.bridge_config": "Неверный адрес загрузчика треков",
+  "syrradio.error.bridge_other": "Ошибка загрузчика треков: %s"
+}

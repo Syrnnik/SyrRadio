@@ -1,0 +1,44 @@
+{
+  "key.categories.syrradio": "SyrRadio",
+  "key.syrradio.open": "Open radio",
+
+  "syrradio.screen.title": "SyrRadio",
+  "syrradio.screen.url_hint": "Track link: Yandex Music, YouTube, SoundCloud…",
+  "syrradio.screen.add": "Add",
+  "syrradio.screen.skip": "Skip",
+  "syrradio.screen.radio_on": "Radio: On",
+  "syrradio.screen.radio_off": "Radio: Off",
+  "syrradio.screen.volume": "Volume: %s%%",
+  "syrradio.screen.nothing": "Nothing is playing. Paste a track link below.",
+  "syrradio.screen.requested_by": "added by %s · %s",
+  "syrradio.screen.preparing": "Downloading the track…",
+  "syrradio.screen.loading": "Receiving the track… %s%%",
+  "syrradio.screen.starting": "Starting…",
+  "syrradio.screen.off_hint": "Radio is off for you. Others still hear it.",
+  "syrradio.screen.queue": "Up next (%s)",
+  "syrradio.screen.queue_empty": "The queue is empty",
+  "syrradio.screen.queue_more": "…and %s more",
+  "syrradio.screen.no_server": "This server doesn't have SyrRadio.",
+  "syrradio.screen.version_mismatch": "Your SyrRadio doesn't match the server's (protocol %s, server %s). Update the mod.",
+
+  "syrradio.source.yandex": "Yandex Music",
+  "syrradio.source.youtube": "YouTube",
+  "syrradio.source.soundcloud": "SoundCloud",
+  "syrradio.source.other": "link",
+
+  "syrradio.notice.not_url": "Paste a track link (https://...)",
+  "syrradio.notice.resolving": "Looking up the track…",
+  "syrradio.notice.added": "Added: %s",
+  "syrradio.notice.failed": "Couldn't add: %s",
+  "syrradio.notice.track_failed": "Couldn't load «%s»: %s",
+
+  "syrradio.command.skipped": "Skipped",
+  "syrradio.command.nothing": "Nothing is playing",
+  "syrradio.command.stopped": "Radio stopped, queue cleared",
+
+  "syrradio.error.bridge_down": "Track downloader is unavailable",
+  "syrradio.error.bridge_timeout": "Track downloader took too long",
+  "syrradio.error.bridge_http": "Track downloader answered HTTP %s",
+  "syrradio.error.bridge_config": "Track downloader address is misconfigured",
+  "syrradio.error.bridge_other": "Track downloader error: %s"
+}
