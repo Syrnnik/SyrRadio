@@ -30,7 +30,7 @@ minecraft {
         client {
             // ./gradlew runClient -PjoinLocal — сразу зайти на локальный runServer.
             if (project.hasProperty('joinLocal')) {
-                args '--quickPlayMultiplayer', 'localhost:25565', '--username', 'Dev'
+                args '--quickPlayMultiplayer', 'localhost:25565', '--username', 'Dev', '--width', '1500', '--height', '880'
             }
         }
         server {

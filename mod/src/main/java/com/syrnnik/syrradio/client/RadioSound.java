@@ -59,6 +59,7 @@ final class RadioSound extends AbstractTickableSoundInstance {
                 AudioStream ogg = new OggAudioStream(new ByteArrayInputStream(data));
                 return offsetMs > 0 ? new SkippingAudioStream(ogg, offsetMs) : ogg;
             } catch (IOException e) {
+                SyrRadio.LOG.warn("SyrRadio: не удалось открыть трек", e);
                 throw new CompletionException(e);
             }
         }, Util.backgroundExecutor());

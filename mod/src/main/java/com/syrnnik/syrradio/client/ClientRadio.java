@@ -1,5 +1,6 @@
 package com.syrnnik.syrradio.client;
 
+import com.syrnnik.syrradio.SyrRadio;
 import com.syrnnik.syrradio.config.ClientConfig;
 import com.syrnnik.syrradio.net.ChunkPacket;
 import com.syrnnik.syrradio.net.HelloPacket;
@@ -166,6 +167,7 @@ public final class ClientRadio {
             return;
         }
         lastStartAttempt = now;
+        SyrRadio.LOG.info("SyrRadio: играю «{}» с {} с ({} КБ)", current.displayName(), offset / 1000, data.length / 1024);
         playing = new RadioSound(data, offset);
         playingId = current.id();
         mc.getSoundManager().play(playing);
