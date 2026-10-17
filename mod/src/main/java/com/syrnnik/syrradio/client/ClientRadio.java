@@ -179,6 +179,7 @@ public final class ClientRadio {
 
     private void stopPlaying() {
         if (playing != null) {
+            SyrRadio.LOG.info("SyrRadio: остановил трек {}", playingId);
             Minecraft.getInstance().getSoundManager().stop(playing);
             playing = null;
         }

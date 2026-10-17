@@ -1,6 +1,7 @@
 package com.syrnnik.syrradio.server;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -29,6 +30,15 @@ final class RadioCommand {
                         : Component.translatableWithFallback("syrradio.command.nothing", "Nothing is playing"), false);
                     return ok ? 1 : 0;
                 }))
+            .then(Commands.literal("remove")
+                .then(Commands.argument("position", IntegerArgumentType.integer(1))
+                    .executes(c -> {
+                        boolean ok = RadioServer.get().removeAt(IntegerArgumentType.getInteger(c, "position"));
+                        c.getSource().sendSuccess(() -> ok
+                            ? Component.translatableWithFallback("syrradio.command.removed", "Removed from the queue")
+                            : Component.translatableWithFallback("syrradio.command.no_such", "No track at that position"), false);
+                        return ok ? 1 : 0;
+                    })))
             .then(Commands.literal("stop")
                 .executes(c -> {
                     RadioServer.get().stopAll();

@@ -35,6 +35,8 @@
   "syrradio.command.skipped": "Пропущено",
   "syrradio.command.nothing": "Ничего не играет",
   "syrradio.command.stopped": "Радио остановлено, очередь очищена",
+  "syrradio.command.removed": "Убрано из очереди",
+  "syrradio.command.no_such": "Под таким номером трека нет",
 
   "syrradio.error.bridge_down": "Загрузчик треков недоступен",
   "syrradio.error.bridge_timeout": "Загрузчик треков не ответил вовремя",

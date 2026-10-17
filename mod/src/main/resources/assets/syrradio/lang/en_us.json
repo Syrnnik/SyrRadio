@@ -35,6 +35,8 @@
   "syrradio.command.skipped": "Skipped",
   "syrradio.command.nothing": "Nothing is playing",
   "syrradio.command.stopped": "Radio stopped, queue cleared",
+  "syrradio.command.removed": "Removed from the queue",
+  "syrradio.command.no_such": "No track at that position",
 
   "syrradio.error.bridge_down": "Track downloader is unavailable",
   "syrradio.error.bridge_timeout": "Track downloader took too long",

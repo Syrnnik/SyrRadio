@@ -98,6 +98,13 @@ class YtDlpSource(Source):
             raise SourceError(f"{self.name}: прямые эфиры не поддерживаются", 400)
         title = info.get("track") or info.get("title") or "Без названия"
         artist = info.get("artist") or info.get("creator") or info.get("uploader") or "—"
+        # На YouTube исполнитель часто уже в названии: «Rick Astley - Never Gonna…».
+        # Без этого вышло бы «Rick Astley — Rick Astley - Never Gonna…».
+        for sep in (" - ", " — ", " – "):
+            prefix = artist + sep
+            if title.lower().startswith(prefix.lower()):
+                title = title[len(prefix):]
+                break
         url = info.get("webpage_url") or info.get("original_url") or info.get("url")
         return Candidate(
             source=self.id,

@@ -32,6 +32,8 @@ import java.util.UUID;
  */
 public final class RadioServer {
     private static final RadioServer INSTANCE = new RadioServer();
+    /** Запас после конца трека: клиенты успевают доиграть, а пауза между треками почти не слышна. */
+    private static final long END_SLACK_MS = 200;
 
     public static RadioServer get() {
         return INSTANCE;
@@ -130,18 +132,35 @@ public final class RadioServer {
             return;
         }
         notify(src, Component.translatableWithFallback("syrradio.notice.resolving", "Looking up the track…"), false);
+        // Номер берём сразу: по нему трек встанет в очередь в порядке добавления,
+        // даже если площадка ответила позже, чем на следующий трек.
+        int id = nextId++;
         bridge.resolve(clean).whenComplete((meta, err) -> server.execute(() -> {
             if (err != null) {
                 notify(src, Component.translatableWithFallback("syrradio.notice.failed", "Couldn't add: %s",
                     BridgeClient.message(err)), true);
                 return;
             }
-            Entry e = new Entry(nextId++, clean, meta, who);
-            queue.add(e);
+            Entry e = new Entry(id, clean, meta, who);
+            enqueue(e);
             SyrRadio.LOG.info("SyrRadio: {} добавил {} ({})", who, e.displayName(), clean);
             notify(src, Component.translatableWithFallback("syrradio.notice.added", "Added: %s", e.displayName()), false);
             broadcastState();
         }));
+    }
+
+    private void enqueue(Entry e) {
+        List<Entry> items = new ArrayList<>(queue);
+        int at = items.size();
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i).id > e.id) {
+                at = i;
+                break;
+            }
+        }
+        items.add(at, e);
+        queue.clear();
+        queue.addAll(items);
     }
 
     /** Пропустить трек trackId, если он сейчас играет. */
@@ -166,6 +185,17 @@ public final class RadioServer {
                 dropAudio(e);
                 broadcastState();
                 return true;
+            }
+        }
+        return false;
+    }
+
+    /** Убрать трек по номеру в очереди, как его показывает /syrradio queue (с единицы). */
+    public boolean removeAt(int position) {
+        int i = 1;
+        for (Entry e : queue) {
+            if (i++ == position) {
+                return remove(e.id);
             }
         }
         return false;
@@ -211,7 +241,7 @@ public final class RadioServer {
                 started = true;
                 SyrRadio.LOG.info("SyrRadio: играет {}", current.displayName());
                 broadcastState();
-            } else if (started && now - startAt >= current.durationMs + 1000) {
+            } else if (started && now - startAt >= current.durationMs + END_SLACK_MS) {
                 finishCurrent();
                 broadcastState();
             }
@@ -286,7 +316,7 @@ public final class RadioServer {
             }
         }
         if (missingBytes <= 0) {
-            return 300;
+            return 150;
         }
         long bytesPerSecond = (long) ServerConfig.CHUNKS_PER_TICK.get() * Net.CHUNK_SIZE * 20;
         return Math.min(15_000, missingBytes * 1000 / bytesPerSecond + 1000);
