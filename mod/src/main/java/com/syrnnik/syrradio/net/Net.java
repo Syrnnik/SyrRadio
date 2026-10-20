@@ -19,7 +19,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
  */
 public final class Net {
     /** Меняется при любом изменении формата пакетов, кроме Hello. */
-    public static final int PROTOCOL = 1;
+    public static final int PROTOCOL = 2;
     /** Размер куска трека в пакете. */
     public static final int CHUNK_SIZE = 32 * 1024;
 
@@ -51,15 +51,21 @@ public final class Net {
         CHANNEL.messageBuilder(AddPacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
             .encoder(AddPacket::encode).decoder(AddPacket::decode)
             .consumerMainThread(AddPacket::handle).add();
-        CHANNEL.messageBuilder(SkipPacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
-            .encoder(SkipPacket::encode).decoder(SkipPacket::decode)
-            .consumerMainThread(SkipPacket::handle).add();
+        CHANNEL.messageBuilder(ControlPacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
+            .encoder(ControlPacket::encode).decoder(ControlPacket::decode)
+            .consumerMainThread(ControlPacket::handle).add();
         CHANNEL.messageBuilder(RemovePacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
             .encoder(RemovePacket::encode).decoder(RemovePacket::decode)
             .consumerMainThread(RemovePacket::handle).add();
         CHANNEL.messageBuilder(ListeningPacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
             .encoder(ListeningPacket::encode).decoder(ListeningPacket::decode)
             .consumerMainThread(ListeningPacket::handle).add();
+        CHANNEL.messageBuilder(MovePacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
+            .encoder(MovePacket::encode).decoder(MovePacket::decode)
+            .consumerMainThread(MovePacket::handle).add();
+        CHANNEL.messageBuilder(SeekPacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
+            .encoder(SeekPacket::encode).decoder(SeekPacket::decode)
+            .consumerMainThread(SeekPacket::handle).add();
     }
 
     public static boolean hasMod(ServerPlayer player) {

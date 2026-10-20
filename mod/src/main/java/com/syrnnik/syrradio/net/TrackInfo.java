@@ -2,7 +2,7 @@ package com.syrnnik.syrradio.net;
 
 import net.minecraft.network.FriendlyByteBuf;
 
-/** Трек в очереди так, как его видит клиент. */
+/** Трек в списке так, как его видит клиент. */
 public record TrackInfo(
     int id,
     String title,
@@ -12,7 +12,8 @@ public record TrackInfo(
     String requestedBy,
     Status status
 ) {
-    public enum Status { QUEUED, PREPARING, READY }
+    /** Готовность файла на сервере. */
+    public enum Status { QUEUED, PREPARING, READY, FAILED }
 
     public void encode(FriendlyByteBuf buf) {
         buf.writeVarInt(id);

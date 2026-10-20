@@ -10,41 +10,59 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /**
- * Что играет и что в очереди.
+ * Весь список треков и где в нём радио.
  *
- * positionMs — позиция текущего трека в момент отправки. Отрицательная значит
- * «старт через столько-то»: сервер даёт клиентам время докачать файл. Время
- * сервера не передаём — часы у всех разные, а задержка сети мала.
+ * Треки до cursor уже играли, cursor — текущий, после — следующие. cursor
+ * равный размеру списка значит «всё доиграло». positionMs — позиция текущего
+ * в момент отправки; отрицательная значит «старт через столько-то»: сервер
+ * даёт клиентам время докачать файл. Время сервера не передаём — часы у всех
+ * разные, а задержка сети мала.
+ *
+ * serial растёт при каждом запуске трека, в том числе того же самого заново
+ * (повтор трека, «назад» посреди трека): по нему клиент понимает, что звук
+ * надо перезапустить. nextId — трек, который сервер уже рассылает заранее.
  */
-public record StatePacket(TrackInfo current, long positionMs, List<TrackInfo> queue) {
-    public static final int MAX_QUEUE = 50;
+public record StatePacket(
+    List<TrackInfo> tracks,
+    int cursor,
+    boolean started,
+    boolean paused,
+    long positionMs,
+    RepeatMode repeat,
+    boolean shuffle,
+    int serial,
+    int nextId
+) {
+    public static final int MAX_TRACKS = 256;
 
     public void encode(FriendlyByteBuf buf) {
-        buf.writeBoolean(current != null);
-        if (current != null) {
-            current.encode(buf);
-            buf.writeLong(positionMs);
-        }
-        int n = Math.min(queue.size(), MAX_QUEUE);
+        int n = Math.min(tracks.size(), MAX_TRACKS);
         buf.writeVarInt(n);
         for (int i = 0; i < n; i++) {
-            queue.get(i).encode(buf);
+            tracks.get(i).encode(buf);
         }
+        buf.writeVarInt(cursor);
+        buf.writeBoolean(started);
+        buf.writeBoolean(paused);
+        buf.writeLong(positionMs);
+        buf.writeEnum(repeat);
+        buf.writeBoolean(shuffle);
+        buf.writeVarInt(serial);
+        buf.writeVarInt(nextId);
     }
 
     public static StatePacket decode(FriendlyByteBuf buf) {
-        TrackInfo current = null;
-        long pos = 0;
-        if (buf.readBoolean()) {
-            current = TrackInfo.decode(buf);
-            pos = buf.readLong();
-        }
-        int n = Math.min(buf.readVarInt(), MAX_QUEUE);
-        List<TrackInfo> queue = new ArrayList<>(n);
+        int n = Math.min(buf.readVarInt(), MAX_TRACKS);
+        List<TrackInfo> tracks = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
-            queue.add(TrackInfo.decode(buf));
+            tracks.add(TrackInfo.decode(buf));
         }
-        return new StatePacket(current, pos, queue);
+        return new StatePacket(tracks, buf.readVarInt(), buf.readBoolean(), buf.readBoolean(), buf.readLong(),
+            buf.readEnum(RepeatMode.class), buf.readBoolean(), buf.readVarInt(), buf.readVarInt());
+    }
+
+    public TrackInfo current() {
+        return cursor >= 0 && cursor < tracks.size() ? tracks.get(cursor) : null;
     }
 
     public void handle(Supplier<NetworkEvent.Context> ctx) {

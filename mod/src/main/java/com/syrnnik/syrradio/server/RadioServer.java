@@ -3,9 +3,11 @@ package com.syrnnik.syrradio.server;
 import com.syrnnik.syrradio.SyrRadio;
 import com.syrnnik.syrradio.config.ServerConfig;
 import com.syrnnik.syrradio.net.ChunkPacket;
+import com.syrnnik.syrradio.net.ControlPacket;
 import com.syrnnik.syrradio.net.HelloPacket;
 import com.syrnnik.syrradio.net.Net;
 import com.syrnnik.syrradio.net.NoticePacket;
+import com.syrnnik.syrradio.net.RepeatMode;
 import com.syrnnik.syrradio.net.StatePacket;
 import com.syrnnik.syrradio.net.TrackInfo;
 import net.minecraft.commands.CommandSourceStack;
@@ -13,10 +15,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Deque;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -25,7 +26,11 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Радио на сервере: очередь, текущий трек и раздача файлов игрокам.
+ * Радио на сервере: список треков с курсором «сейчас играет», режимы плеера
+ * и раздача файлов игрокам.
+ *
+ * Треки до курсора уже играли, после — будут. Курсор, равный размеру списка,
+ * значит «всё доиграло»: новый трек встанет на это место и сразу заиграет.
  *
  * Всё состояние меняется только в серверном потоке. Ответы bridge приходят из
  * чужих потоков и возвращаются сюда через server.execute().
@@ -34,6 +39,10 @@ public final class RadioServer {
     private static final RadioServer INSTANCE = new RadioServer();
     /** Запас после конца трека: клиенты успевают доиграть, а пауза между треками почти не слышна. */
     private static final long END_SLACK_MS = 200;
+    /** «Назад» позже этой секунды начинает трек заново, раньше — включает предыдущий. */
+    private static final long PREV_RESTART_MS = 3000;
+    /** Сколько треков хранить в списке: лишние сыгранные уходят с начала. */
+    private static final int MAX_TRACKS = 200;
 
     public static RadioServer get() {
         return INSTANCE;
@@ -64,16 +73,79 @@ public final class RadioServer {
 
     private final BridgeClient bridge = new BridgeClient();
     private final Map<UUID, Listener> listeners = new HashMap<>();
-    private final Deque<Entry> queue = new ArrayDeque<>();
+    private final List<Entry> list = new ArrayList<>();
     private MinecraftServer server;
+    private RadioStore store;
+
     private int nextId = 1;
-    private Entry current;
+    private int cursor;
+    private RepeatMode repeat = RepeatMode.OFF;
+    private boolean shuffle;
+
+    /** Текущий трек запущен (играет или стоит на паузе с позицией). */
     private boolean started;
-    /** Когда начал (или начнёт) играть текущий трек, по часам сервера. */
+    /** Когда у текущего трека была (или будет) позиция 0, по часам сервера. */
     private long startAt;
+    private boolean paused;
+    /** Пауза поставлена не человеком, а потому что слушать некому. */
+    private boolean autoPaused;
+    private long pausedPos;
+    /** Растёт при каждом запуске трека — клиенты по нему перезапускают звук. */
+    private int serial;
+
     private int ticks;
+    private boolean dirty;
 
     private RadioServer() {}
+
+    // ---------------------------------------------------------------- жизненный цикл
+
+    public void start(MinecraftServer server) {
+        this.server = server;
+        this.store = new RadioStore(server);
+        RadioStore.Saved saved = store.load();
+        list.clear();
+        if (saved != null) {
+            for (RadioStore.SavedTrack t : saved.tracks()) {
+                list.add(new Entry(t.id(), t.url(), t.title(), t.artist(), t.source(), t.requestedBy(), t.durationMs()));
+            }
+            nextId = Math.max(saved.nextId(), list.stream().mapToInt(e -> e.id + 1).max().orElse(1));
+            cursor = Math.max(0, Math.min(saved.cursor(), list.size()));
+            repeat = saved.repeat() == null ? RepeatMode.OFF : saved.repeat();
+            shuffle = saved.shuffle();
+            SyrRadio.LOG.info("SyrRadio: восстановлено {} треков, текущий — {}", list.size(), cursor + 1);
+        }
+        started = false;
+        paused = false;
+        autoPaused = false;
+    }
+
+    public void shutdown() {
+        save();
+        list.clear();
+        listeners.clear();
+        cursor = 0;
+        started = false;
+        paused = false;
+        server = null;
+        store = null;
+    }
+
+    private void markDirty() {
+        dirty = true;
+    }
+
+    private void save() {
+        if (store == null) {
+            return;
+        }
+        List<RadioStore.SavedTrack> tracks = new ArrayList<>();
+        for (Entry e : list) {
+            tracks.add(new RadioStore.SavedTrack(e.id, e.url, e.title, e.artist, e.source, e.requestedBy, e.durationMs));
+        }
+        store.save(new RadioStore.Saved(nextId, cursor, repeat, shuffle, tracks));
+        dirty = false;
+    }
 
     // ---------------------------------------------------------------- игроки
 
@@ -115,13 +187,58 @@ public final class RadioServer {
         }
         l.listening = listening;
         if (!listening) {
-            // Клиент выбрасывает файлы, когда радио выключают: при включении шлём заново.
+            // Клиент выбрасывает файлы, когда радио у себя глушит: при включении шлём заново.
             l.sent.clear();
             l.complete.clear();
         }
     }
 
-    // ---------------------------------------------------------------- очередь
+    private boolean hasListeners() {
+        for (Listener l : listeners.values()) {
+            if (l.wantsAudio()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ---------------------------------------------------------------- список
+
+    private Entry current() {
+        return cursor >= 0 && cursor < list.size() ? list.get(cursor) : null;
+    }
+
+    private int indexOf(int id) {
+        for (int i = 0; i < list.size(); i++) {
+            if (list.get(i).id == id) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** Какой трек заиграет после текущего сам собой — его готовим и рассылаем заранее. */
+    private Entry upcoming() {
+        Entry cur = current();
+        if (cur == null) {
+            return null;
+        }
+        if (repeat == RepeatMode.ONE) {
+            return cur;
+        }
+        if (cursor + 1 < list.size()) {
+            return list.get(cursor + 1);
+        }
+        // На новом круге с перемешиванием порядок ещё не известен.
+        return repeat == RepeatMode.ALL && !shuffle ? list.get(0) : null;
+    }
+
+    private long position() {
+        if (!started) {
+            return 0;
+        }
+        return paused ? pausedPos : System.currentTimeMillis() - startAt;
+    }
 
     public void add(String url, CommandSourceStack src) {
         server = src.getServer();
@@ -132,7 +249,7 @@ public final class RadioServer {
             return;
         }
         notify(src, Component.translatableWithFallback("syrradio.notice.resolving", "Looking up the track…"), false);
-        // Номер берём сразу: по нему трек встанет в очередь в порядке добавления,
+        // Номер берём сразу: по нему трек встанет в порядке добавления,
         // даже если площадка ответила позже, чем на следующий трек.
         int id = nextId++;
         bridge.resolve(clean).whenComplete((meta, err) -> server.execute(() -> {
@@ -142,84 +259,280 @@ public final class RadioServer {
                 return;
             }
             Entry e = new Entry(id, clean, meta, who);
-            enqueue(e);
+            append(e);
             SyrRadio.LOG.info("SyrRadio: {} добавил {} ({})", who, e.displayName(), clean);
             notify(src, Component.translatableWithFallback("syrradio.notice.added", "Added: %s", e.displayName()), false);
-            broadcastState();
+            changed();
         }));
     }
 
-    private void enqueue(Entry e) {
-        List<Entry> items = new ArrayList<>(queue);
-        int at = items.size();
-        for (int i = 0; i < items.size(); i++) {
-            if (items.get(i).id > e.id) {
-                at = i;
-                break;
-            }
+    private void append(Entry e) {
+        // В конец, но перед теми ещё не игравшими треками, что добавлены позже
+        // (их ответ от площадки пришёл раньше).
+        int at = list.size();
+        while (at - 1 > cursor && list.get(at - 1).id > e.id) {
+            at--;
         }
-        items.add(at, e);
-        queue.clear();
-        queue.addAll(items);
+        list.add(at, e);
+        // Список не бесконечный: лишнее срезаем со стороны сыгранного.
+        while (list.size() > MAX_TRACKS && cursor > 0) {
+            dropAudio(list.remove(0));
+            cursor--;
+        }
     }
 
-    /** Пропустить трек trackId, если он сейчас играет. */
-    public boolean skip(int trackId, String who) {
-        if (current == null || current.id != trackId) {
+    public void control(ControlPacket.Action action, int trackId, String who) {
+        switch (action) {
+            case PREV -> {
+                Entry cur = current();
+                if (cur == null || cur.id == trackId) {
+                    prev(who);
+                }
+            }
+            case NEXT -> {
+                Entry cur = current();
+                if (cur != null && cur.id == trackId) {
+                    next(who);
+                }
+            }
+            case PAUSE -> togglePause(who);
+            case REPEAT -> setRepeat(repeat.next());
+            case SHUFFLE -> setShuffle(!shuffle);
+            case PLAY -> play(trackId, who);
+            case CLEAR -> clear(who);
+        }
+    }
+
+    public boolean next(String who) {
+        if (current() == null) {
             return false;
         }
-        SyrRadio.LOG.info("SyrRadio: {} пропустил {}", who, current.displayName());
-        finishCurrent();
-        broadcastState();
+        SyrRadio.LOG.info("SyrRadio: {} → следующий", who);
+        advance();
+        changed();
         return true;
     }
 
-    public boolean skipCurrent(String who) {
-        return current != null && skip(current.id, who);
+    public boolean prev(String who) {
+        if (list.isEmpty()) {
+            return false;
+        }
+        SyrRadio.LOG.info("SyrRadio: {} → назад", who);
+        Entry cur = current();
+        if (cur != null && position() > PREV_RESTART_MS) {
+            stopCurrent();
+        } else {
+            stopCurrent();
+            if (cursor > 0) {
+                cursor--;
+            } else if (repeat == RepeatMode.ALL) {
+                cursor = list.size() - 1;
+            }
+        }
+        retainAudio();
+        changed();
+        return true;
+    }
+
+    public boolean togglePause(String who) {
+        if (current() == null) {
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        if (paused) {
+            if (started) {
+                startAt = now - pausedPos + 150;
+            }
+            paused = false;
+            autoPaused = false;
+            SyrRadio.LOG.info("SyrRadio: {} снял с паузы", who);
+        } else {
+            pausedPos = started ? now - startAt : 0;
+            paused = true;
+            SyrRadio.LOG.info("SyrRadio: {} поставил на паузу", who);
+        }
+        changed();
+        return true;
+    }
+
+    /** Перемотать текущий трек. Клиенты перезапустят звук с новой позиции по serial. */
+    public boolean seek(int trackId, long positionMs, String who) {
+        Entry cur = current();
+        if (cur == null || cur.id != trackId || !started) {
+            return false;
+        }
+        long pos = Math.max(0, Math.min(positionMs, Math.max(0, cur.durationMs - 500)));
+        if (paused) {
+            pausedPos = pos;
+        } else {
+            startAt = System.currentTimeMillis() - pos + 150;
+        }
+        serial++;
+        SyrRadio.LOG.info("SyrRadio: {} перемотал на {} с", who, pos / 1000);
+        changed();
+        return true;
+    }
+
+    public void setRepeat(RepeatMode mode) {
+        repeat = mode;
+        retainAudio();
+        changed();
+    }
+
+    public void setShuffle(boolean on) {
+        shuffle = on;
+        if (on && cursor + 1 < list.size()) {
+            // Перемешиваем только то, что ещё не играло, — и так, чтобы было видно в списке.
+            Collections.shuffle(list.subList(cursor + 1, list.size()));
+        }
+        retainAudio();
+        changed();
+    }
+
+    /** Включить трек trackId прямо сейчас. */
+    public boolean play(int trackId, String who) {
+        int i = indexOf(trackId);
+        if (i < 0) {
+            return false;
+        }
+        stopCurrent();
+        cursor = i;
+        Entry e = list.get(i);
+        if (e.state == Entry.State.FAILED) {
+            e.state = Entry.State.QUEUED; // дадим ещё шанс
+        }
+        SyrRadio.LOG.info("SyrRadio: {} включил {}", who, e.displayName());
+        retainAudio();
+        changed();
+        return true;
+    }
+
+    public boolean move(int trackId, int toIndex) {
+        int from = indexOf(trackId);
+        if (from < 0) {
+            return false;
+        }
+        Entry cur = current();
+        Entry e = list.remove(from);
+        list.add(Math.max(0, Math.min(toIndex, list.size())), e);
+        if (cur != null) {
+            cursor = list.indexOf(cur); // текущий трек остаётся текущим, где бы он ни оказался
+        }
+        retainAudio();
+        changed();
+        return true;
     }
 
     public boolean remove(int trackId) {
-        for (Entry e : queue) {
-            if (e.id == trackId) {
-                queue.remove(e);
-                dropAudio(e);
-                broadcastState();
-                return true;
-            }
+        int i = indexOf(trackId);
+        if (i < 0) {
+            return false;
         }
-        return false;
+        boolean wasCurrent = i == cursor;
+        if (wasCurrent) {
+            stopCurrent();
+        }
+        Entry e = list.remove(i);
+        dropAudio(e);
+        if (i < cursor) {
+            cursor--;
+        }
+        // Убрали играющий последний трек при повторе очереди — круг начинается заново.
+        if (wasCurrent && cursor >= list.size() && repeat == RepeatMode.ALL && !list.isEmpty()) {
+            cursor = 0;
+        }
+        retainAudio();
+        changed();
+        return true;
     }
 
-    /** Убрать трек по номеру в очереди, как его показывает /syrradio queue (с единицы). */
+    public boolean playAt(int position, String who) {
+        return position >= 1 && position <= list.size() && play(list.get(position - 1).id, who);
+    }
+
     public boolean removeAt(int position) {
-        int i = 1;
-        for (Entry e : queue) {
-            if (i++ == position) {
-                return remove(e.id);
-            }
-        }
-        return false;
+        return position >= 1 && position <= list.size() && remove(list.get(position - 1).id);
     }
 
-    public void stopAll() {
-        if (current != null) {
-            finishCurrent();
+    /** Очистить весь список, вместе с играющим треком: радио замолкает. */
+    public void clear(String who) {
+        stopCurrent();
+        for (Entry e : list) {
+            dropAudio(e);
         }
-        queue.forEach(this::dropAudio);
-        queue.clear();
-        broadcastState();
+        list.clear();
+        cursor = 0;
+        SyrRadio.LOG.info("SyrRadio: {} очистил список", who);
+        changed();
     }
 
     public List<String> describe() {
         List<String> lines = new ArrayList<>();
-        if (current != null) {
-            lines.add("▶ " + current.displayName() + " [" + current.requestedBy + "]");
+        for (int i = 0; i < list.size(); i++) {
+            Entry e = list.get(i);
+            String mark = i == cursor ? (paused ? "⏸ " : "▶ ") : i < cursor ? "· " : "  ";
+            lines.add(mark + (i + 1) + ". " + e.displayName() + " [" + e.requestedBy + "]");
         }
-        int i = 1;
-        for (Entry e : queue) {
-            lines.add(i++ + ". " + e.displayName() + " [" + e.requestedBy + "]");
-        }
+        lines.add("repeat=" + repeat.name().toLowerCase() + ", shuffle=" + (shuffle ? "on" : "off"));
         return lines;
+    }
+
+    // ---------------------------------------------------------------- переходы
+
+    /** Остановить текущий трек (с отметкой о прослушивании), курсор не трогаем. */
+    private void stopCurrent() {
+        Entry e = current();
+        if (e != null && started) {
+            double played = Math.max(0, Math.min(e.durationMs, position())) / 1000.0;
+            if (played >= 1) {
+                bridge.played(e.url, played);
+            }
+        }
+        started = false;
+        paused = false;
+        autoPaused = false;
+    }
+
+    /** Перейти к следующему треку (по кнопке или когда текущий доиграл). */
+    private void advance() {
+        stopCurrent();
+        int n = list.size();
+        if (cursor + 1 < n) {
+            cursor++;
+        } else if (repeat == RepeatMode.ALL && n > 0) {
+            if (shuffle) {
+                Collections.shuffle(list); // новый круг — новый порядок
+            }
+            cursor = 0;
+        } else {
+            cursor = n;
+        }
+        retainAudio();
+    }
+
+    /**
+     * Держим файлы только у текущего, следующего и предыдущего трека (чтобы
+     * «назад» не ждал повторного скачивания), остальные отпускаем.
+     */
+    private void retainAudio() {
+        Entry cur = current();
+        Entry next = upcoming();
+        Entry prev = cursor > 0 && cursor - 1 < list.size() ? list.get(cursor - 1) : null;
+        for (Entry e : list) {
+            if (e != cur && e != next && e != prev && e.data != null) {
+                dropAudio(e);
+            }
+        }
+    }
+
+    private void dropAudio(Entry e) {
+        e.data = null;
+        if (e.state == Entry.State.READY) {
+            e.state = Entry.State.QUEUED;
+        }
+        for (Listener l : listeners.values()) {
+            l.forget(e.id);
+        }
     }
 
     // ---------------------------------------------------------------- цикл
@@ -227,46 +540,81 @@ public final class RadioServer {
     public void tick(MinecraftServer server) {
         this.server = server;
         long now = System.currentTimeMillis();
+        boolean anyone = hasListeners();
 
-        if (current == null && !queue.isEmpty()) {
-            current = queue.poll();
-            started = false;
-            broadcastState();
+        Entry cur = current();
+        if (cur != null && cur.state == Entry.State.FAILED) {
+            skipFailed();
+            cur = current();
         }
 
-        if (current != null) {
-            prepare(current);
-            if (current.state == Entry.State.READY && !started) {
-                startAt = now + graceMs(current);
+        if (cur != null) {
+            prepare(cur);
+            if (!anyone) {
+                // Слушать некому: не играем в пустой мир и не шлём площадкам «прослушивания».
+                if (started && !paused) {
+                    pausedPos = now - startAt;
+                    paused = true;
+                    autoPaused = true;
+                }
+            } else if (autoPaused) {
+                startAt = now - pausedPos + graceMs(cur);
+                paused = false;
+                autoPaused = false;
+                changed();
+            }
+
+            if (anyone && cur.state == Entry.State.READY && !started && !paused) {
+                startAt = now + graceMs(cur);
                 started = true;
-                SyrRadio.LOG.info("SyrRadio: играет {}", current.displayName());
-                broadcastState();
-            } else if (started && now - startAt >= current.durationMs + END_SLACK_MS) {
-                finishCurrent();
-                broadcastState();
+                serial++;
+                SyrRadio.LOG.info("SyrRadio: играет {}", cur.displayName());
+                changed();
+            } else if (started && !paused && now - startAt >= cur.durationMs + END_SLACK_MS) {
+                if (repeat == RepeatMode.ONE) {
+                    stopCurrent(); // тот же трек заново: serial вырастет при старте
+                } else {
+                    advance();
+                }
+                changed();
             }
         }
 
-        // Следующий трек готовим и рассылаем заранее, чтобы между треками не было паузы.
-        Entry next = queue.peek();
-        if (next != null) {
+        Entry next = upcoming();
+        if (next != null && next != cur) {
             prepare(next);
         }
 
-        pumpChunks(next);
+        pumpChunks(cur, next);
 
+        ticks++;
         // Раз в 10 секунд напоминаем всем позицию: это лечит рассинхрон, если он набежал.
-        if (++ticks % 200 == 0 && current != null && started) {
+        if (ticks % 200 == 0 && started && !paused) {
             broadcastState();
+        }
+        if (dirty && ticks % 100 == 0) {
+            save();
         }
     }
 
-    public void shutdown() {
-        current = null;
+    /** Текущий трек не скачался — идём дальше, но не по кругу бесконечно. */
+    private void skipFailed() {
+        for (int guard = 0; guard <= list.size(); guard++) {
+            Entry cur = current();
+            if (cur == null || cur.state != Entry.State.FAILED) {
+                return;
+            }
+            if (cursor + 1 >= list.size() && repeat != RepeatMode.ALL) {
+                cursor = list.size();
+                started = false;
+                changed();
+                return;
+            }
+            advance();
+        }
+        cursor = list.size(); // всё в списке сломано
         started = false;
-        queue.clear();
-        listeners.clear();
-        server = null;
+        changed();
     }
 
     private void prepare(Entry e) {
@@ -275,8 +623,7 @@ public final class RadioServer {
         }
         e.state = Entry.State.PREPARING;
         bridge.audio(e.url).whenComplete((audio, err) -> server.execute(() -> {
-            boolean alive = e == current || queue.contains(e);
-            if (!alive) {
+            if (!list.contains(e)) {
                 return;
             }
             if (err != null) {
@@ -285,21 +632,20 @@ public final class RadioServer {
                 SyrRadio.LOG.warn("SyrRadio: не скачался {}: {}", e.displayName(), why.getString());
                 broadcastNotice(Component.translatableWithFallback("syrradio.notice.track_failed",
                     "Couldn't load «%s»: %s", e.displayName(), why), true);
-                if (e == current) {
-                    current = null;
-                    started = false;
-                } else {
-                    queue.remove(e);
-                }
-                broadcastState();
+                changed();
                 return;
             }
-            e.data = audio.data();
             if (audio.durationMs() > 0) {
                 e.durationMs = audio.durationMs();
             }
+            if (e != current() && e != upcoming()) {
+                e.state = Entry.State.QUEUED; // пока качали, трек уехал из «текущий/следующий»
+                changed();
+                return;
+            }
+            e.data = audio.data();
             e.state = Entry.State.READY;
-            broadcastState();
+            changed();
         }));
     }
 
@@ -308,6 +654,9 @@ public final class RadioServer {
      * Если у всех он уже есть (его разослали заранее), почти не ждём.
      */
     private long graceMs(Entry e) {
+        if (e.data == null) {
+            return 150;
+        }
         long missingBytes = 0;
         for (Listener l : listeners.values()) {
             if (l.wantsAudio() && !l.complete.contains(e.id)) {
@@ -322,38 +671,16 @@ public final class RadioServer {
         return Math.min(15_000, missingBytes * 1000 / bytesPerSecond + 1000);
     }
 
-    private void finishCurrent() {
-        Entry e = current;
-        current = null;
-        if (e == null) {
-            return;
-        }
-        if (started) {
-            double played = Math.max(0, Math.min(e.durationMs, System.currentTimeMillis() - startAt)) / 1000.0;
-            if (played >= 1) {
-                bridge.played(e.url, played);
-            }
-        }
-        started = false;
-        dropAudio(e);
-    }
-
-    private void dropAudio(Entry e) {
-        e.data = null;
-        for (Listener l : listeners.values()) {
-            l.forget(e.id);
-        }
-    }
-
-    private void pumpChunks(Entry next) {
+    private void pumpChunks(Entry cur, Entry next) {
         int budget = ServerConfig.CHUNKS_PER_TICK.get();
         for (Listener l : listeners.values()) {
             if (!l.wantsAudio()) {
                 continue;
             }
-            int left = budget;
-            left = sendChunks(l, current, left);
-            sendChunks(l, next, left);
+            int left = sendChunks(l, cur, budget);
+            if (next != cur) {
+                sendChunks(l, next, left);
+            }
         }
     }
 
@@ -379,18 +706,19 @@ public final class RadioServer {
 
     // ---------------------------------------------------------------- рассылка
 
+    private void changed() {
+        markDirty();
+        broadcastState();
+    }
+
     private StatePacket buildState() {
-        TrackInfo cur = null;
-        long pos = 0;
-        if (current != null) {
-            cur = current.info(started);
-            pos = started ? System.currentTimeMillis() - startAt : 0;
+        List<TrackInfo> tracks = new ArrayList<>(list.size());
+        for (Entry e : list) {
+            tracks.add(e.info());
         }
-        List<TrackInfo> q = new ArrayList<>();
-        for (Entry e : queue) {
-            q.add(e.info(false));
-        }
-        return new StatePacket(cur, pos, q);
+        Entry next = upcoming();
+        return new StatePacket(tracks, cursor, started, paused, position(), repeat, shuffle, serial,
+            next == null ? -1 : next.id);
     }
 
     private void broadcastState() {
