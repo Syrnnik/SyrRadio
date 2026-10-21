@@ -14,6 +14,7 @@ import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.minecraftforge.fml.loading.FMLEnvironment;
 import org.slf4j.Logger;
 
 /**
@@ -29,13 +30,18 @@ public class SyrRadio {
 
     public SyrRadio() {
         ModLoadingContext ctx = ModLoadingContext.get();
-        // COMMON, а не SERVER: файл лежит в общей папке config/, а не внутри мира,
-        // так его проще положить в контейнер.
-        ctx.registerConfig(ModConfig.Type.COMMON, ServerConfig.SPEC, "syrradio-server.toml");
         ctx.registerConfig(ModConfig.Type.CLIENT, ClientConfig.SPEC, "syrradio-client.toml");
-
         Net.register();
-        MinecraftForge.EVENT_BUS.register(ServerEvents.class);
+
+        // Радио работает только на выделенном сервере: в одиночной игре качать
+        // треки некому. Поэтому и серверный конфиг заводим только там — у игроков
+        // не появляется пустой syrradio-server.toml.
+        if (FMLEnvironment.dist.isDedicatedServer()) {
+            // COMMON, а не SERVER: файл лежит в общей папке config/, а не внутри мира,
+            // так его проще положить в контейнер.
+            ctx.registerConfig(ModConfig.Type.COMMON, ServerConfig.SPEC, "syrradio-server.toml");
+            MinecraftForge.EVENT_BUS.register(ServerEvents.class);
+        }
 
         IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> ClientEvents.init(modBus));
