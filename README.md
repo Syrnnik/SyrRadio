@@ -1,214 +1,118 @@
 # SyrRadio
 
-Одно радио на весь сервер Minecraft. Игрок вставляет ссылку на трек
-(Яндекс Музыка, YouTube, SoundCloud и всё, что понимает yt-dlp), и трек
-синхронно играет у всех, у кого стоит мод.
+One shared radio for a Minecraft server. Paste a link to a track — Yandex Music,
+YouTube, SoundCloud, Bandcamp or anything else [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+understands — and it plays for everyone on the server at the same time.
+
+Forge 1.20.1. The mod is needed on the server and on every player who wants to
+listen; players without it can still join and simply don't hear the radio.
+
+## What it does
+
+- **One playlist for the whole server.** Played tracks stay in the list (grey),
+  the current one is highlighted, upcoming ones are in normal colour. Anyone can
+  add, reorder, play or remove tracks.
+- **Player controls:** shuffle, previous, pause, next, repeat (off → whole list →
+  this track). Pause and modes are shared by everyone.
+- **Seek** by dragging the knob on the progress bar.
+- **Drag to reorder** any track, including played ones. Every row has ▶ (play
+  now) and ✕ (remove); **Clear** empties the list after a confirmation click.
+- **In sync.** A player who joins mid-track starts from the right second. The
+  next track is sent in advance, so there is almost no gap between tracks.
+- **Personal volume.** Volume 0 turns the radio off just for you — the server
+  then stops sending you files. Normal game music is never muted.
+- **Survives restarts.** The playlist, position and modes are saved in the world
+  folder. While nobody is listening, the radio pauses itself.
+- **Friendly to players without the mod.** They join as usual and get a chat
+  message with a download link. A player with an outdated version is asked to
+  update; the radio stays silent for them instead of kicking them.
+
+Only links to single tracks for now — no albums or playlists. Tracks longer than
+20 minutes are rejected: files travel through the game connection.
+
+## How it works
 
 ```
-игрок: экран радио (клавиша «,» / «Б») или /syrradio add <ссылка>
-        ↓
-мод на сервере: очередь  ──HTTP──►  bridge: площадка → скачать → ffmpeg → ogg
-        ↓                  ◄──ogg──
-рассылка файла кусками по 32 КБ через соединение игры
-        ↓
-мод на клиенте: играет ogg звуковым движком игры с одной позиции у всех
+player: radio screen (key ",") or /syrradio add <link>
+   ↓
+mod on the server: playlist ──HTTP──► bridge: source → download → ffmpeg → ogg
+   ↓                          ◄──ogg──
+the file is sent to players in 32 KB chunks over the game connection
+   ↓
+mod on the client: plays the ogg with the game sound engine, same position for everyone
 ```
 
-- `mod/` — мод под Forge 1.20.1. Нужен и на сервере, и у игроков.
-- `bridge/` — сервис на Python, который знает всё про площадки. Живёт рядом
-  с сервером майнкрафта в одной docker-сети, наружу не открыт.
+- `mod/` — the Forge mod.
+- `bridge/` — a small Python service that knows everything about music sources.
+  It runs next to the Minecraft server and is not exposed to the internet.
+  A new source is a module in `bridge/app/sources/`; the mod doesn't change.
 
-Новая площадка — это модуль в `bridge/app/sources/`, мод при этом не меняется.
+## Installation
 
-## Что умеет
+**Players:** put `syrradio-forge-1.20.1-<version>.jar` from
+[Releases](https://github.com/Syrnnik/SyrRadio/releases/latest) into `mods/`.
+Nothing else is needed — no accounts or subscriptions, the server downloads
+everything.
 
-- Один общий список треков. Сыгранные остаются в нём серыми, текущий
-  подсвечен, следующие — обычным цветом. Управлять может любой игрок.
-- Плеер под текущим треком: перемешать, назад, пауза, вперёд, повтор
-  (по кругу: выкл → весь список → этот трек). Пауза и режимы общие на сервер.
-  «Назад» в первые 3 секунды трека включает предыдущий, позже — начинает
-  текущий заново.
-- Порядок меняется перетаскиванием любого трека, в том числе сыгранного:
-  перетащил ниже текущего — сыграет снова. У каждой строки ▶ (включить
-  сейчас) и ✕ (убрать). «Очистить» убирает весь список вместе с играющим
-  треком; первый клик спрашивает «Очистить?», второй очищает.
-- Список, позиция и режимы сохраняются в папке мира (`syrradio.json`) и
-  переживают перезапуск сервера; хранятся последние 200 треков.
-- Когда на сервере нет ни одного слушателя, радио само встаёт на паузу:
-  не играет в пустой мир и не шлёт площадкам «прослушивания».
-- Только ссылки на отдельные треки. Альбомы и плейлисты — позже.
-- Файл приходит заранее, пока играет предыдущий трек, поэтому между треками
-  почти нет паузы. Зашедший посреди трека начинает с нужной секунды.
-- Подпись «Сейчас играет» над хотбаром на пару секунд при смене трека.
-- У каждого своя громкость; 0 — радио у себя выключено (сервер тогда и
-  файлы не присылает). Обычная музыка игры не глушится.
-- Экран подстраивается под окно и размер интерфейса: список показывает
-  столько строк, сколько влезает, и прокручивается колесом.
-- Игрок без мода спокойно заходит на сервер и просто не слышит радио.
-  Игрок со старой версией мода тоже заходит — радио у него молчит,
-  а экран просит обновить мод.
-- Треки длиннее 20 минут не берём: файл рассылается через соединение игры,
-  и часовой микс начал бы мешать самой игре.
+**Server:** the same jar in `mods/`, plus the bridge and a config file — see
+[docs/deploy/server.md](docs/deploy/server.md) and
+[docs/deploy/bridge.md](docs/deploy/bridge.md).
 
-## bridge
+## Using the radio
 
-Площадки:
+Press **`,`** (rebind in *Controls → SyrRadio*) to open the radio screen:
 
-| id | Что | Как |
-|---|---|---|
-| `yandex` | Яндекс Музыка | библиотека `yandex-music`, нужен токен аккаунта с Плюсом |
-| `youtube` | YouTube | yt-dlp, через прокси `PROXY_YOUTUBE` |
-| `soundcloud` | SoundCloud | yt-dlp |
-| `other` | всё остальное, что понимает yt-dlp | yt-dlp |
+| Part | What it does |
+|------|--------------|
+| Progress bar | Hover to see the knob, drag it to seek |
+| 🔀 ⏮ ⏯ ⏭ 🔁 | Shuffle, previous (restarts the track after 3 s), pause, next, repeat |
+| Volume | Your own volume; 0 = radio off for you |
+| Link field | Paste a track link, press Enter or **Add** |
+| Track list | Drag rows to reorder, ▶ to play, ✕ to remove, **Clear** to empty |
 
-API (все запросы, кроме `/health`, с заголовком `Authorization: Bearer <BRIDGE_TOKEN>`):
+### Commands
 
-- `GET /health` — какие площадки включены;
-- `POST /resolve {"url"}` — название, исполнитель, длительность;
-- `POST /audio {"url"}` — сам трек в ogg vorbis, заголовок `X-Duration-Ms`;
-- `POST /played {"url", "seconds"}` — сколько трек реально играл
-  (для Яндекса — отметка о прослушивании, как в приложении).
+Available to every player, the console and RCON:
 
-Готовые ogg лежат в кэше час, медиатеку bridge не копит. При каждом старте
-контейнер подтягивает свежий yt-dlp: если YouTube сломался, достаточно
-`docker compose restart`.
+| Command | Description |
+|---------|-------------|
+| `/syrradio add <link>` | Add a track to the end of the list |
+| `/syrradio next` / `skip` / `prev` | Next / previous track |
+| `/syrradio pause` | Pause or resume |
+| `/syrradio repeat off\|all\|one` | Repeat mode |
+| `/syrradio shuffle on\|off` | Shuffle |
+| `/syrradio play <n>` / `remove <n>` | Play / remove track number `n` |
+| `/syrradio clear` | Clear the whole list |
+| `/syrradio queue` | Show the list: `·` played, `▶` playing, `⏸` paused, `…` waiting |
 
-### Выкладка на servnnik
+## Configuration
 
-Первый раз — завести `.env` (секрет сгенерировать `openssl rand -hex 24`):
+`config/syrradio-server.toml` (server only):
 
-```bash
-ssh servnnik 'mkdir -p ~/minecraft/syrradio-bridge'
-scp bridge/.env.example servnnik:minecraft/syrradio-bridge/.env   # и заполнить
-```
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `bridgeUrl` | `http://syrradio-bridge:8080` | Where the bridge lives |
+| `bridgeToken` | — | `BRIDGE_TOKEN` from the bridge's `.env` |
+| `chunksPerTick` | `4` | 32 KB chunks per player per tick (~2.5 MB/s) |
+| `joinMessages.missingMod` | Russian text | Chat message for players without the mod |
+| `joinMessages.outdatedMod` | Russian text | Chat message for players with an old version |
+| `joinMessages.downloadUrl` | GitHub Releases | Link appended to both messages |
 
-Дальше выкладка одной командой с мака:
+`config/syrradio-client.toml`: `volume` (0–1, default 0.5), also set from the screen.
 
-```bash
-bridge/deploy.sh
-```
+## Building from source
 
-Контейнер `mc-server-syrradio-bridge-1`, проект `mc-server`, сеть
-`mc-server_default`. Сервер майнкрафта ходит к нему по `http://syrradio-bridge:8080`.
+Requires JDK 17.
 
-### Особенности servnnik
-
-Эти настройки нужны только на servnnik, поэтому в `.env.example` их нет —
-они живут в `~/minecraft/syrradio-bridge/.env` на сервере.
-
-- `REGISTRY=mirror.gcr.io` — Docker Hub с servnnik не открывается, базовые
-  образы тянем с зеркала Google.
-- `PROXY_YOUTUBE=http://10.200.200.2:8888` и `PROXY_OTHER=http://10.200.200.2:8888` —
-  YouTube и SoundCloud с домашнего IP заблокированы, качаем их через VPN.
-  Яндекс прокси не трогает: ему нужен как раз российский IP.
-
-VPN на servnnik — туннель AmneziaWG до `vpn.redbread.tech` внутри network
-namespace `vpnns` и tinyproxy в нём на `10.200.200.2:8888`. Контейнеры ходят
-к прокси через veth `10.200.200.1 ↔ 10.200.200.2` и NAT для `172.16.0.0/12`.
-Поднимают его юниты `vpnns.service` (скрипт `/usr/local/sbin/vpnns-up`) и
-`vpn-proxy.service`, исходники — `~/vpn-proxy-setup/`, конфиг туннеля —
-`~/vpn/awg0.conf`. Тот же прокси раньше стоял у майнкрафт-серверов
-(закомментированный блок в `compression-1-20-1/docker-compose.yml`).
-
-Проверка с сервера:
-
-```bash
-docker run --rm --network mc-server_default curlimages/curl \
-  -s -m 10 -x http://10.200.200.2:8888 https://api.ipify.org
-```
-
-Должен вернуться IP VPN, а не домашний. Если таймаут — туннель лежит:
-
-```bash
-sudo awg show                 # в vpnns: sudo ip netns exec vpnns awg show
-sudo systemctl restart vpnns.service vpn-proxy.service
-```
-
-`latest handshake` давнее пары минут или пустое — сервер не отвечает:
-проверить, жив ли AmneziaWG на `vpn.redbread.tech` и не сменились ли ключ
-или порт в `~/vpn/awg0.conf`.
-
-### Токен Яндекс Музыки
-
-Нужен аккаунт с Плюсом. Получить токен:
-
-1. Открыть в браузере, где выполнен вход в нужный аккаунт Яндекса:
-   `https://oauth.yandex.ru/authorize?response_type=token&client_id=23cabbbdc6cd418abb4b39c32c41195d`
-2. Разрешить доступ. Браузер перейдёт на адрес вида
-   `https://music.yandex.ru/#access_token=<ТОКЕН>&...` — нужна часть между
-   `access_token=` и `&`.
-3. Вписать её в `YANDEX_TOKEN=` в `~/minecraft/syrradio-bridge/.env` на
-   servnnik и перезапустить: `docker compose up -d`.
-
-Токен даёт полный доступ к аккаунту Яндекс Музыки — никому его не показывать.
-
-## Мод
-
-Сборка (нужна JDK 17):
-
-```bash
+```sh
 cd mod
-./gradlew build      # → build/libs/syrradio-forge-1.20.1-<версия>.jar
+./gradlew build      # → build/libs/syrradio-forge-1.20.1-<version>.jar
 ```
 
-### Сервер
+Local test setup (dev server, client and bridge on one machine):
+[docs/dev/local.md](docs/dev/local.md).
 
-1. Положить jar в `mods/`.
-2. Создать `config/syrradio-server.toml`:
+## Documentation
 
-   ```toml
-   bridgeUrl = "http://syrradio-bridge:8080"
-   bridgeToken = "<BRIDGE_TOKEN из .env bridge>"
-   chunksPerTick = 4
-   ```
-
-3. Перезапустить сервер.
-
-`chunksPerTick` — сколько кусков по 32 КБ уходит каждому игроку за тик;
-4 — это около 2,5 МБ/с, четырёхминутный трек долетает за пару секунд.
-
-### Игроки
-
-Положить тот же jar в `mods/` клиента — больше ничего не нужно. Ни аккаунтов,
-ни подписок у игроков не требуется: всё качает сервер.
-
-Клиентская настройка (`config/syrradio-client.toml`, меняется из экрана радио):
-`volume`, по умолчанию 0.5. Клавиша переназначается в «Настройки → Управление → SyrRadio».
-
-### Команды
-
-Доступны всем игрокам, консоли и RCON:
-
-- `/syrradio add <ссылка>` — добавить трек в конец списка;
-- `/syrradio next` (или `skip`) / `prev` — следующий / предыдущий;
-- `/syrradio pause` — пауза или продолжить;
-- `/syrradio repeat off|all|one`, `/syrradio shuffle on|off` — режимы;
-- `/syrradio play <номер>` — включить трек из списка;
-- `/syrradio remove <номер>` — убрать трек (номер как в `queue`);
-- `/syrradio clear` — очистить весь список, радио замолкает;
-- `/syrradio queue` — весь список: `·` сыграл, `▶` играет, `⏸` на паузе.
-
-### Проверка на маке
-
-```bash
-cd mod
-./gradlew runServer                 # dev-сервер в run-server/, RCON на 25575
-./gradlew runClient -PjoinLocal     # клиент сразу заходит на localhost
-```
-
-bridge для этого запускается локально (`uvicorn app.main:app --port 8790`),
-а в `run-server/config/syrradio-server.toml` указывается `http://127.0.0.1:8790`.
-
-## Совместимость версий
-
-Сетевой протокол мода — `Net.PROTOCOL`. Его надо поднимать при любом
-изменении пакетов, кроме `HelloPacket`: формат `HelloPacket` заморожен,
-по нему клиент и сервер узнают, что версии разные, и радио тихо выключается
-вместо ошибки подключения.
-
-## Иконки
-
-`mod/src/main/resources/assets/syrradio/textures/gui/icons.png` рисует скрипт
-`mod/tools/make_icons.py` (нужен Pillow): полоса иконок 16×16 —
-перемешать, назад, играть, пауза, вперёд, повтор, повтор трека, удалить,
-включить. Поменять иконку — поправить скрипт и запустить заново.
+Everything else — architecture, bridge, deployment, release process — is in
+[docs/](docs/README.md) (in Russian).
