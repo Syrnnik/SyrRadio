@@ -8,6 +8,10 @@ version="${mod_version}"
 displayName="${mod_name}"
 authors="${mod_authors}"
 description='''${mod_description}'''
+# Мод необязательный: игрок без него заходит на сервер и просто не слышит
+# радио. Без этой строки список серверов показывал бы такой сервер как
+# несовместимый.
+displayTest="IGNORE_ALL_VERSION"
 
 [[dependencies.${mod_id}]]
 modId="forge"
