@@ -108,8 +108,11 @@ public final class ClientRadio {
             long expected = now - p.positionMs();
             if (serial != prevSerial || playing == null) {
                 startLocal = expected;
-            } else if (Math.abs(expected - startLocal) > 1500) {
-                // Набежал рассинхрон — перезапускаемся с правильной позиции.
+            } else if (Math.abs(expected - startLocal) > 3000) {
+                // Набежал заметный рассинхрон — перезапускаемся с правильной позиции.
+                // Порог не меньше пары секунд: сразу после входа, пока клиент
+                // догружает мир, пакеты приходят с опозданием, и на меньшем пороге
+                // трек дёргался бы на ровном месте.
                 startLocal = expected;
                 stopPlaying();
             }
