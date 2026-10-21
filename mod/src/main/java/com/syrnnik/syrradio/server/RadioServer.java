@@ -11,7 +11,11 @@ import com.syrnnik.syrradio.net.RepeatMode;
 import com.syrnnik.syrradio.net.StatePacket;
 import com.syrnnik.syrradio.net.TrackInfo;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -96,6 +100,13 @@ public final class RadioServer {
     private int ticks;
     private boolean dirty;
 
+    /** Кому и когда (номер тика) написать, что мода нет или он старый. */
+    private record JoinNotice(long dueTick, boolean outdated) {}
+
+    private final Map<UUID, JoinNotice> joinNotices = new HashMap<>();
+    /** Через сколько тиков после входа писать: при входе моды TFG сыплют в чат, сообщение там утонет. */
+    private static final int JOIN_NOTICE_DELAY = 100;
+
     private RadioServer() {}
 
     // ---------------------------------------------------------------- жизненный цикл
@@ -151,14 +162,18 @@ public final class RadioServer {
 
     public void onLogin(ServerPlayer player) {
         listeners.remove(player.getUUID());
+        joinNotices.remove(player.getUUID());
         if (Net.hasMod(player)) {
             listeners.put(player.getUUID(), new Listener(player));
             Net.send(player, new HelloPacket(Net.PROTOCOL));
+        } else {
+            joinNotices.put(player.getUUID(), new JoinNotice(ticks + JOIN_NOTICE_DELAY, false));
         }
     }
 
     public void onLogout(ServerPlayer player) {
         listeners.remove(player.getUUID());
+        joinNotices.remove(player.getUUID());
     }
 
     public void onHello(ServerPlayer player, int protocol) {
@@ -172,6 +187,7 @@ public final class RadioServer {
         } else {
             SyrRadio.LOG.info("SyrRadio: у {} другая версия протокола ({} вместо {}), радио ему не шлём",
                 player.getGameProfile().getName(), protocol, Net.PROTOCOL);
+            joinNotices.put(player.getUUID(), new JoinNotice(ticks + JOIN_NOTICE_DELAY, true));
         }
     }
 
@@ -470,7 +486,8 @@ public final class RadioServer {
         List<String> lines = new ArrayList<>();
         for (int i = 0; i < list.size(); i++) {
             Entry e = list.get(i);
-            String mark = i == cursor ? (paused ? "⏸ " : "▶ ") : i < cursor ? "· " : "  ";
+            // ▶ — играет, ⏸ — пауза, … — выбран, но ждёт слушателей или ещё скачивается.
+            String mark = i == cursor ? (paused ? "⏸ " : started ? "▶ " : "… ") : i < cursor ? "· " : "  ";
             lines.add(mark + (i + 1) + ". " + e.displayName() + " [" + e.requestedBy + "]");
         }
         lines.add("repeat=" + repeat.name().toLowerCase() + ", shuffle=" + (shuffle ? "on" : "off"));
@@ -588,6 +605,7 @@ public final class RadioServer {
         pumpChunks(cur, next);
 
         ticks++;
+        sendJoinNotices(server);
         // Раз в 10 секунд напоминаем всем позицию: это лечит рассинхрон, если он набежал.
         if (ticks % 200 == 0 && started && !paused) {
             broadcastState();
@@ -595,6 +613,39 @@ public final class RadioServer {
         if (dirty && ticks % 100 == 0) {
             save();
         }
+    }
+
+    /** «У тебя нет мода» / «мод старый» — лично игроку, через несколько секунд после входа. */
+    private void sendJoinNotices(MinecraftServer server) {
+        if (joinNotices.isEmpty()) {
+            return;
+        }
+        var it = joinNotices.entrySet().iterator();
+        while (it.hasNext()) {
+            var e = it.next();
+            if (e.getValue().dueTick() > ticks) {
+                continue;
+            }
+            it.remove();
+            ServerPlayer p = server.getPlayerList().getPlayer(e.getKey());
+            String text = (e.getValue().outdated() ? ServerConfig.OUTDATED_MOD_MESSAGE : ServerConfig.MISSING_MOD_MESSAGE).get();
+            if (p == null || text.isBlank()) {
+                continue;
+            }
+            p.sendSystemMessage(joinMessage(text, ServerConfig.DOWNLOAD_URL.get()));
+        }
+    }
+
+    private static Component joinMessage(String text, String url) {
+        MutableComponent msg = Component.literal(text).withStyle(ChatFormatting.YELLOW);
+        if (!url.isBlank()) {
+            msg.append(" ").append(Component.literal(url).withStyle(s -> s
+                .withColor(ChatFormatting.AQUA)
+                .withUnderlined(true)
+                .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url))
+                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(url)))));
+        }
+        return msg;
     }
 
     /** Текущий трек не скачался — идём дальше, но не по кругу бесконечно. */
