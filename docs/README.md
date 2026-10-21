@@ -34,6 +34,7 @@
 - [versioning.md](contributing/versioning.md) — версия мода и протокола
 - [release.md](contributing/release.md) — выпуск версии
 - [docs.md](contributing/docs.md) — как вести эту документацию
+- [tasks.md](contributing/tasks.md) — как вести список задач
 
 ## Задачи — [tasks.md](tasks.md)
 
