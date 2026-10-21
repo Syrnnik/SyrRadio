@@ -119,3 +119,21 @@ Local test setup (dev server, client and bridge on one machine):
 
 Everything else — architecture, bridge, deployment, release process — is in
 [docs/](docs/README.md) (in Russian).
+
+## Disclaimer
+
+SyrRadio is not affiliated with, endorsed by or connected to Yandex, Google
+(YouTube), SoundCloud, Bandcamp or Mojang. Their names are trademarks of their
+respective owners and are used here only to say which links the bridge accepts.
+
+The project contains no music and does not host or distribute any. Tracks are
+fetched at runtime by the server operator's own bridge, using the operator's
+own accounts, through third-party libraries ([yt-dlp](https://github.com/yt-dlp/yt-dlp),
+[yandex-music](https://github.com/MarshalX/yandex-music-api)). Whoever runs a
+server with SyrRadio is responsible for complying with the terms of service of
+those platforms and with copyright law in their country. The mod is intended
+for private servers among friends.
+
+## License
+
+[MIT](LICENSE).
