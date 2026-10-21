@@ -94,9 +94,12 @@ Available to every player, the console and RCON:
 | `bridgeUrl` | `http://syrradio-bridge:8080` | Where the bridge lives |
 | `bridgeToken` | — | `BRIDGE_TOKEN` from the bridge's `.env` |
 | `chunksPerTick` | `4` | 32 KB chunks per player per tick (~2.5 MB/s) |
-| `joinMessages.missingMod` | Russian text | Chat message for players without the mod |
-| `joinMessages.outdatedMod` | Russian text | Chat message for players with an old version |
-| `joinMessages.downloadUrl` | GitHub Releases | Link appended to both messages |
+| `joinMessages.downloadUrl` | GitHub Releases | Link appended to the messages below |
+| `joinMessages.ru.missingMod` / `en.missingMod` | built-in text | Chat message for players without the mod |
+| `joinMessages.ru.outdatedMod` / `en.outdatedMod` | built-in text | Chat message for players with an old version |
+
+The message language follows the player's game language: Russian gets `ru`,
+everyone else gets `en`.
 
 `config/syrradio-client.toml`: `volume` (0–1, default 0.5), also set from the screen.
 

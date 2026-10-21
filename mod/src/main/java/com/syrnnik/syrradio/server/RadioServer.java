@@ -628,19 +628,36 @@ public final class RadioServer {
             }
             it.remove();
             ServerPlayer p = server.getPlayerList().getPlayer(e.getKey());
-            String text = (e.getValue().outdated() ? ServerConfig.OUTDATED_MOD_MESSAGE : ServerConfig.MISSING_MOD_MESSAGE).get();
-            if (p == null || text.isBlank()) {
+            if (p == null) {
+                continue;
+            }
+            // Язык игры клиент присылает сразу после входа — к этому моменту он уже известен.
+            boolean ru = p.getLanguage().toLowerCase().startsWith("ru");
+            boolean outdated = e.getValue().outdated();
+            String text = (ru
+                ? (outdated ? ServerConfig.OUTDATED_MOD_RU : ServerConfig.MISSING_MOD_RU)
+                : (outdated ? ServerConfig.OUTDATED_MOD_EN : ServerConfig.MISSING_MOD_EN)).get();
+            if (text.isBlank()) {
                 continue;
             }
             p.sendSystemMessage(joinMessage(text, ServerConfig.DOWNLOAD_URL.get()));
         }
     }
 
+    /** Белый текст, «SyrRadio» в нём оранжевым, ссылка синяя и кликабельная. */
     private static Component joinMessage(String text, String url) {
-        MutableComponent msg = Component.literal(text).withStyle(ChatFormatting.YELLOW);
+        MutableComponent msg = Component.empty().withStyle(ChatFormatting.WHITE);
+        String name = "SyrRadio";
+        int from = 0;
+        for (int at = text.indexOf(name); at >= 0; at = text.indexOf(name, from)) {
+            msg.append(text.substring(from, at));
+            msg.append(Component.literal(name).withStyle(ChatFormatting.GOLD));
+            from = at + name.length();
+        }
+        msg.append(text.substring(from));
         if (!url.isBlank()) {
             msg.append(" ").append(Component.literal(url).withStyle(s -> s
-                .withColor(ChatFormatting.AQUA)
+                .withColor(ChatFormatting.BLUE)
                 .withUnderlined(true)
                 .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url))
                 .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(url)))));

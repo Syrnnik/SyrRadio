@@ -9,9 +9,15 @@
    chunksPerTick = 4
 
    [joinMessages]
+   downloadUrl = "https://github.com/Syrnnik/SyrRadio/releases/latest"
+
+   [joinMessages.ru]
    missingMod = "..."
    outdatedMod = "..."
-   downloadUrl = "https://github.com/Syrnnik/SyrRadio/releases/latest"
+
+   [joinMessages.en]
+   missingMod = "..."
+   outdatedMod = "..."
    ```
 
    Чего нет в файле, мод допишет сам со значениями по умолчанию.
