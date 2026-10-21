@@ -14,12 +14,17 @@ from pathlib import Path
 
 
 class SourceError(Exception):
-    """Ошибка, текст которой можно показать игроку."""
+    """Ошибка, текст которой можно показать игроку.
 
-    def __init__(self, message: str, status: int = 502):
+    retry — есть ли смысл попробовать ещё раз. Ошибки запроса (4xx: не та
+    ссылка, плейлист, трек не найден) не повторяются никогда.
+    """
+
+    def __init__(self, message: str, status: int = 502, retry: bool = True):
         super().__init__(message)
         self.message = message
         self.status = status
+        self.retry = retry and status >= 500
 
 
 @dataclass

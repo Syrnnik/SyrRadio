@@ -10,6 +10,8 @@
 | `YANDEX_TOKEN` | — | токен Яндекс Музыки, пусто — площадка выключена |
 | `PROXY_YOUTUBE` | — | HTTP-прокси для YouTube |
 | `PROXY_OTHER` | — | HTTP-прокси для остальных площадок через yt-dlp |
+| `DOWNLOAD_ATTEMPTS` | `3` | сколько раз пробовать скачать трек |
+| `DOWNLOAD_RETRY_DELAY_SEC` | `10` | пауза между попытками |
 | `MAX_DURATION_SEC` | `1200` | длиннее не берём |
 | `CACHE_DIR` | `/cache` | где лежат готовые ogg |
 | `CACHE_TTL_SEC` | `3600` | сколько их хранить |

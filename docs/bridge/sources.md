@@ -24,6 +24,7 @@
 1. Класс-наследник `Source` (`sources/base.py`): `matches(url)`,
    `resolve_url(url)`, `download(cand, dir)`, при желании `report_played`.
 2. Ошибку, которую надо показать игроку, бросать `SourceError(текст)`.
+   Если повторять бессмысленно — `SourceError(текст, retry=False)`.
 3. Добавить в `build_sources()` до `other`.
 
 Мод при этом не меняется.

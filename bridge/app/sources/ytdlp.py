@@ -25,7 +25,7 @@ class _Quiet:
         pass
 
     def warning(self, msg):
-        log.debug("yt-dlp: %s", msg)
+        log.info("yt-dlp: %s", msg)
 
     def error(self, msg):
         log.warning("yt-dlp: %s", msg)

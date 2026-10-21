@@ -26,6 +26,12 @@ MAX_DURATION_SEC = int(_env("MAX_DURATION_SEC", "1200"))
 CACHE_DIR = Path(_env("CACHE_DIR", "/cache"))
 CACHE_TTL_SEC = int(_env("CACHE_TTL_SEC", "3600"))
 
+# Сколько раз пробовать скачать трек и сколько ждать между попытками.
+# Площадки иногда отказывают разово (YouTube отвечает 403, если выход VPN
+# сменился между получением ссылки и скачиванием), со второго раза проходит.
+DOWNLOAD_ATTEMPTS = max(1, int(_env("DOWNLOAD_ATTEMPTS", "3")))
+DOWNLOAD_RETRY_DELAY_SEC = float(_env("DOWNLOAD_RETRY_DELAY_SEC", "10"))
+
 # Качество ogg vorbis (ffmpeg -q:a). 3 — около 112 кбит/с: четырёхминутный трек
 # весит ~3,5 МБ, а на слух от исходного mp3 не отличается.
 OGG_QUALITY = _env("OGG_QUALITY", "3")

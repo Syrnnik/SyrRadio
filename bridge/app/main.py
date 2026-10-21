@@ -117,12 +117,7 @@ def get_audio(body: UrlBody):
     with _lock_for(key):
         if not out.exists():
             started = time.monotonic()
-            work = Path(tempfile.mkdtemp(prefix="dl-", dir=config.CACHE_DIR))
-            try:
-                src = source_for_url(url).download(cand, work)
-                audio.to_ogg(src, out)
-            finally:
-                shutil.rmtree(work, ignore_errors=True)
+            _download(url, cand, out)
             log.info(
                 "готов %s — %s: %.1f МБ за %.1f с",
                 cand.artist, cand.title, out.stat().st_size / 1e6, time.monotonic() - started,
@@ -131,6 +126,29 @@ def get_audio(body: UrlBody):
 
     duration = audio.probe_duration_ms(out)
     return FileResponse(out, media_type="audio/ogg", headers={"X-Duration-Ms": str(duration)})
+
+
+def _download(url: str, cand: Candidate, out: Path) -> None:
+    """Скачать и перекодировать с повторами: разовые отказы площадок лечатся второй попыткой."""
+    attempts = config.DOWNLOAD_ATTEMPTS
+    for attempt in range(1, attempts + 1):
+        work = Path(tempfile.mkdtemp(prefix="dl-", dir=config.CACHE_DIR))
+        try:
+            src = source_for_url(url).download(cand, work)
+            audio.to_ogg(src, out)
+            return
+        except SourceError as e:
+            if not e.retry or attempt == attempts:
+                if attempt > 1:
+                    log.warning("не скачался %s — %s за %d попыток: %s", cand.artist, cand.title, attempt, e.message)
+                raise
+            log.warning(
+                "попытка %d/%d для %s — %s не удалась: %s; повтор через %.0f с",
+                attempt, attempts, cand.artist, cand.title, e.message, config.DOWNLOAD_RETRY_DELAY_SEC,
+            )
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        time.sleep(config.DOWNLOAD_RETRY_DELAY_SEC)
 
 
 @app.post("/played", dependencies=[Depends(require_token)])

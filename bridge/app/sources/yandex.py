@@ -101,11 +101,11 @@ class YandexSource(Source):
             track = api.tracks([cand.native_id])[0]
             infos = [i for i in track.get_download_info() if i.codec == "mp3"]
             if not infos:
-                raise SourceError("Яндекс Музыка: нет mp3 для этого трека")
+                raise SourceError("Яндекс Музыка: нет mp3 для этого трека", retry=False)
             best = max(infos, key=lambda i: i.bitrate_in_kbps)
             if best.preview:
                 # Без подписки отдают только 30 секунд — такой трек не нужен.
-                raise SourceError("Яндекс Музыка отдаёт только отрывок: проверь подписку на аккаунте")
+                raise SourceError("Яндекс Музыка отдаёт только отрывок: проверь подписку на аккаунте", retry=False)
             path = dest_dir / "source.mp3"
             best.download(str(path))
             return path
