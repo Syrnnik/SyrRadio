@@ -1,7 +1,7 @@
 """Яндекс Музыка через неофициальную библиотеку yandex-music.
 
-Качаем один трек по запросу, лучшее доступное mp3, а после проигрывания
-отправляем отметку о прослушивании с реальной длительностью, как приложение.
+Качаем один трек по запросу, лучшее доступное mp3. Отметку о прослушивании
+с реальной длительностью отправляем, только если включено YANDEX_REPORT_PLAYS.
 Нужен токен аккаунта с Плюсом; правила сервиса соблюдает владелец аккаунта.
 """
 
@@ -29,8 +29,9 @@ class YandexSource(Source):
     id = "yandex"
     name = "Яндекс Музыка"
 
-    def __init__(self, token: str):
+    def __init__(self, token: str, report_plays: bool = False):
         self._token = token
+        self._report_plays = report_plays
         self._client: Client | None = None
         self._lock = threading.Lock()
 
@@ -114,7 +115,7 @@ class YandexSource(Source):
 
     def report_played(self, cand: Candidate, seconds: float) -> None:
         album_id = cand.extra.get("album_id")
-        if not album_id:
+        if not self._report_plays or not album_id:
             return
         try:
             self._api().play_audio(

@@ -10,7 +10,7 @@ from .sources.ytdlp import YtDlpSource
 
 def build_sources() -> list[Source]:
     return [
-        YandexSource(config.YANDEX_TOKEN),
+        YandexSource(config.YANDEX_TOKEN, report_plays=config.YANDEX_REPORT_PLAYS),
         YtDlpSource(
             "youtube", "YouTube",
             proxy=config.PROXY_YOUTUBE,
