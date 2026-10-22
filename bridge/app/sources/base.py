@@ -38,6 +38,10 @@ class Candidate:
     # Всё, что площадке понадобится при скачивании, чтобы не искать заново.
     extra: dict = field(default_factory=dict)
 
+    def display(self) -> str:
+        """«Исполнитель — название», или только название, если исполнителя нет."""
+        return f"{self.artist} — {self.title}" if self.artist and self.artist != "—" else self.title
+
 
 URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 

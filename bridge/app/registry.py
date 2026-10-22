@@ -16,6 +16,7 @@ def build_sources() -> list[Source]:
             proxy=config.PROXY_YOUTUBE,
             search_prefix="ytsearch",
             url_patterns=[r"(^|\.)youtube\.com/", r"(^|//)youtu\.be/"],
+            uploader_is_artist=False,
         ),
         YtDlpSource(
             "soundcloud", "SoundCloud",

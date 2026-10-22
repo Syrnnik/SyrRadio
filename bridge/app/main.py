@@ -97,7 +97,7 @@ def _track_json(cand: Candidate) -> dict:
 def resolve(body: UrlBody):
     url = _norm(body.url)
     cand = _resolve(url)
-    log.info("resolve %s → %s — %s (%s)", url, cand.artist, cand.title, cand.source)
+    log.info("resolve %s → %s (%s)", url, cand.display(), cand.source)
     return _track_json(cand)
 
 
@@ -119,8 +119,8 @@ def get_audio(body: UrlBody):
             started = time.monotonic()
             _download(url, cand, out)
             log.info(
-                "готов %s — %s: %.1f МБ за %.1f с",
-                cand.artist, cand.title, out.stat().st_size / 1e6, time.monotonic() - started,
+                "готов %s: %.1f МБ за %.1f с",
+                cand.display(), out.stat().st_size / 1e6, time.monotonic() - started,
             )
         out.touch()  # продлеваем жизнь в кэше
 
@@ -140,11 +140,11 @@ def _download(url: str, cand: Candidate, out: Path) -> None:
         except SourceError as e:
             if not e.retry or attempt == attempts:
                 if attempt > 1:
-                    log.warning("не скачался %s — %s за %d попыток: %s", cand.artist, cand.title, attempt, e.message)
+                    log.warning("не скачался %s за %d попыток: %s", cand.display(), attempt, e.message)
                 raise
             log.warning(
-                "попытка %d/%d для %s — %s не удалась: %s; повтор через %.0f с",
-                attempt, attempts, cand.artist, cand.title, e.message, config.DOWNLOAD_RETRY_DELAY_SEC,
+                "попытка %d/%d для %s не удалась: %s; повтор через %.0f с",
+                attempt, attempts, cand.display(), e.message, config.DOWNLOAD_RETRY_DELAY_SEC,
             )
         finally:
             shutil.rmtree(work, ignore_errors=True)

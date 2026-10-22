@@ -39,8 +39,14 @@ class YtDlpSource(Source):
         proxy: str = "",
         search_prefix: str | None = None,
         url_patterns: list[str] | None = None,
+        uploader_is_artist: bool = True,
     ):
         self.id = id
+        # Можно ли считать того, кто загрузил, исполнителем. На SoundCloud и
+        # Bandcamp — да. На YouTube это название канала («King Gnu official
+        # YouTube channel», перезаливы вроде «TheAnimeMen»), а исполнитель
+        # обычно и так стоит в названии ролика.
+        self._uploader_is_artist = uploader_is_artist
         self.name = name
         self._proxy = proxy
         self._search_prefix = search_prefix
@@ -96,13 +102,16 @@ class YtDlpSource(Source):
     def _candidate(self, info: dict) -> Candidate:
         if info.get("is_live"):
             raise SourceError(f"{self.name}: прямые эфиры не поддерживаются", 400)
-        title = info.get("track") or info.get("title") or "Без названия"
-        artist = info.get("artist") or info.get("creator") or info.get("uploader") or "—"
-        # На YouTube исполнитель часто уже в названии: «Rick Astley - Never Gonna…».
-        # Без этого вышло бы «Rick Astley — Rick Astley - Never Gonna…».
+        title = (info.get("track") or info.get("title") or "Без названия").strip()
+        artist = info.get("artist") or info.get("creator")
+        if not artist and self._uploader_is_artist:
+            artist = info.get("uploader")
+        artist = (artist or "").strip()
+        # Исполнитель часто повторяется в названии: «C418 - Sweden».
+        # Без этого вышло бы «C418 — C418 - Sweden».
         for sep in (" - ", " — ", " – "):
             prefix = artist + sep
-            if title.lower().startswith(prefix.lower()):
+            if artist and title.lower().startswith(prefix.lower()):
                 title = title[len(prefix):]
                 break
         url = info.get("webpage_url") or info.get("original_url") or info.get("url")
